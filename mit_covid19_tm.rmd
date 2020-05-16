@@ -1,5 +1,6 @@
 ---
 title: "MIT COVID 19 Datathon"
+author: "Srishti Saha"
 output: html_notebook
 ---
 
@@ -19,13 +20,23 @@ library(ggplot2)
 library(reshape)
 library(lubridate)
 library(tidyverse)
-library("ldatuning")
+#library("ldatuning")
 library(ggthemes)
 ```
 
+# Data Source
+
+The data has been pulled from BigQuery. Data Source: [here](https://blog.gdeltproject.org/now-live-updating-expanded-a-new-dataset-for-exploring-the-coronavirus-narrative-in-global-online-news/)
+
+The data used for this analysis is a randomized sample of size: 300000 articles for NYC and 197672 articles for SF.
+
+We will split the data into segments of 2-week long periods from January to May 2020.
+
+## Data Split as per time-period (rows)
 
 ```{r}
-news_data<- read.csv("sample_data.csv",stringsAsFactors = FALSE, sep = ",")
+#news_data<- read.csv("sample_data_nyc.csv",stringsAsFactors = FALSE, sep = ",")
+news_data<- read.csv("sample_data_sf.csv",stringsAsFactors = FALSE, sep = ",")
 news_data$Date <- as.Date(news_data$Date, "%Y-%m-%d")
 
 
@@ -41,7 +52,7 @@ news_data_51<- subset(news_data, month(Date)==5 & day(Date)<=15)
 ```
 
 
-
+## Data subsets for necessary columns
 
 ```{r}
 
@@ -57,9 +68,15 @@ data_3rd_month_2nd_half<-news_data_32%>% dplyr::select(Title,ContextualText)
 data_4th_month_2nd_half<-news_data_42%>% dplyr::select(Title,ContextualText)
 ```
 
+# Preprocessing
+
+The sections below will clean the text and prepare that for topic modelling.
+
+## Create tidytext objects
+
 ```{r}
 
-
+# creating tidytext format objects from each of the subsets above
 tidy_reviews1<-data_1st_month_1st_half %>%
     unnest_tokens("word", ContextualText)
 tidy_reviews2<-data_2nd_month_1st_half %>%
@@ -84,8 +101,10 @@ tidy_reviews9<-data_4th_month_2nd_half %>%
 
 ```
 
+## Remove white spaces
 
 ```{r}
+#remove extra white spaces
 tidy_reviews1$word <- gsub("\\s+","",tidy_reviews1$word)
 tidy_reviews2$word <- gsub("\\s+","",tidy_reviews2$word)
 tidy_reviews3$word <- gsub("\\s+","",tidy_reviews3$word)
@@ -100,8 +119,13 @@ tidy_reviews9$word <- gsub("\\s+","",tidy_reviews9$word)
 ```
 
 
+## Removing numbers
+
 ```{r}
 # removing numbers from the words list
+
+## all stand alone digits will be removed
+
 tidy_reviews1<-tidy_reviews1[-grep("\\b\\d+\\b", tidy_reviews1$word),]
 tidy_reviews2<-tidy_reviews2[-grep("\\b\\d+\\b", tidy_reviews2$word),]
 tidy_reviews3<-tidy_reviews3[-grep("\\b\\d+\\b", tidy_reviews3$word),]
@@ -114,6 +138,8 @@ tidy_reviews7<-tidy_reviews3[-grep("\\b\\d+\\b", tidy_reviews7$word),]
 tidy_reviews8<-tidy_reviews4[-grep("\\b\\d+\\b", tidy_reviews8$word),]
 tidy_reviews9<-tidy_reviews5[-grep("\\b\\d+\\b", tidy_reviews9$word),]
 ```
+
+## Removing Punctuations
 
 ```{r echo=TRUE}
 # removing punctuation (intraword)
@@ -147,7 +173,7 @@ tidy_reviews9$word<-removePunctuation(tidy_reviews9$word,preserve_intra_word_con
 ```
 
 
-
+## Lemmatization
 
 ```{r echo=TRUE}
 #Lemmatization
@@ -168,7 +194,7 @@ tidy_reviews5<-tidy_reviews5  %>%
 
 
 
-
+### for second half of each month
 tidy_reviews6<-tidy_reviews6  %>%
   mutate(word = textstem::lemmatize_words(word))
 
@@ -183,7 +209,10 @@ tidy_reviews9<-tidy_reviews9  %>%
 ```
 
 
+## Removal of short words
+
 ```{r}
+# removing words of length 1 and 2
 tidy_reviews1$word<-gsub('\\b\\w{1,2}\\b',"",tidy_reviews1$word)
 tidy_reviews2$word<-gsub('\\b\\w{1,2}\\b',"",tidy_reviews2$word)
 tidy_reviews3$word<-gsub('\\b\\w{1,2}\\b',"",tidy_reviews3$word)
@@ -198,11 +227,14 @@ tidy_reviews9$word<-gsub('\\b\\w{1,2}\\b',"",tidy_reviews9$word)
 ```
 
 
+## Removal of Stop Words
+
+We will not only use the default stop word list, but also a custom list with place names etc.
 
 ```{r echo=TRUE}
 data("stop_words")
 
-stop_words2= as.data.frame(c("every","also","","city","china","york","wuhan","coronavirus","virus","covid","people","person"))
+stop_words2= as.data.frame(c("every","also","","city","china","york","wuhan","coronavirus","virus","covid","people","person","san","bay","county","california","francisco"))
 names(stop_words2)[1]<- "word"
 
 ##### for first month_ 1st half
@@ -281,9 +313,12 @@ tidy_reviews9<-tidy_reviews9 %>%
 
 ```
 
+# Document-Term Matrix
 
+We will use the cleaned tidy-text objects to form individual document-term matrices for all months (periods).
 
 ```{r}
+# create a document-term matrix
 ## DTM from tidytext
 DTM1<-  tidy_reviews1 %>%
   dplyr::count(Title, word) %>%
@@ -306,7 +341,7 @@ DTM5<-  tidy_reviews5 %>%
   cast_dtm(Title, word, n)
 
 
-## second half month DTMS
+## second half month DTMs
 DTM6<-  tidy_reviews6 %>%
   dplyr::count(Title, word) %>%
   cast_dtm(Title, word, n)
@@ -326,6 +361,8 @@ DTM9<-  tidy_reviews9 %>%
 
 ```
 
+
+# Topic Modelling
 
 ```{r}
 # writing a function that takes as input:
@@ -373,30 +410,37 @@ top_terms1<-top_terms1 %>%
 
 ```{r}
 # extracting 6 topics from each month_
-#print("For month (1_1) ")
-#topic_model_k(DTM1,c(6),10,1,'January 1st half')
+
+print("For month (1_1) ")
+topic_model_k(DTM1,c(6),10,1,'January 1st half')
 print("For month (2_1) ")
 topic_model_k(DTM2,c(6),10,2,'February 1st half')
-#print("For month (3_1) ")
-#topic_model_k(DTM3,c(6),10,3,'March 1st half')
-#print("For month (4_1) ")
-#topic_model_k(DTM4,c(6),10,4,'April 1st half')
+print("For month (3_1) ")
+topic_model_k(DTM3,c(6),10,3,'March 1st half')
+print("For month (4_1) ")
+topic_model_k(DTM4,c(6),10,4,'April 1st half')
 print("For month (5_1) ")
 topic_model_k(DTM5,c(6),10,5,'May 1st half')
 
 
 
-#print("For month (1_2) ")
-#topic_model_k(DTM6,c(6),10,3,'January 2nd half')
-#print("For month (2_2) ")
-#topic_model_k(DTM7,c(6),10,4,'February 2nd half')
-#print("For month (3_2) ")
-#topic_model_k(DTM8,c(6),10,5,'March 2nd half')
-#print("For month (4_2) ")
-#topic_model_k(DTM9,c(6),10,5,'April 2nd half')
+print("For month (1_2) ")
+topic_model_k(DTM6,c(6),10,3,'January 2nd half')
+print("For month (2_2) ")
+topic_model_k(DTM7,c(6),10,4,'February 2nd half')
+print("For month (3_2) ")
+topic_model_k(DTM8,c(6),10,5,'March 2nd half')
+print("For month (4_2) ")
+topic_model_k(DTM9,c(6),10,5,'April 2nd half')
 ```
 
 ```{r}
+
+
+## The gamma scores of the lDA outputs gives us topic probabilities givenn the documents
+# using gamma score for topic weightages
+
+# Jan 1st half
 topic_model1<-LDA(DTM1, k=6, control = list(seed = 321))
 topicProbabilities1 <- as.data.frame(topic_model1@gamma)
 V1_P1<-mean(topicProbabilities1$V1)
@@ -406,6 +450,8 @@ V4_P1<-mean(topicProbabilities1$V4)
 V5_P1<-mean(topicProbabilities1$V5)
 V6_P1<-mean(topicProbabilities1$V6)
 
+
+# Feb 1st half
 topic_model2<-LDA(DTM2, k=6, control = list(seed = 321))
 topicProbabilities2 <- as.data.frame(topic_model2@gamma)
 V1_P2<-mean(topicProbabilities2$V1)
@@ -416,6 +462,7 @@ V5_P2<-mean(topicProbabilities2$V5)
 V6_P2<-mean(topicProbabilities2$V6)
 
 
+# Narch 1st half
 topic_model3<-LDA(DTM3, k=6, control = list(seed = 321))
 topicProbabilities3 <- as.data.frame(topic_model3@gamma)
 V1_P3<-mean(topicProbabilities3$V1)
@@ -425,6 +472,7 @@ V4_P3<-mean(topicProbabilities3$V4)
 V5_P3<-mean(topicProbabilities3$V5)
 V6_P3<-mean(topicProbabilities3$V6)
 
+# April 1st half
 topic_model4<-LDA(DTM4, k=6, control = list(seed = 321))
 topicProbabilities4 <- as.data.frame(topic_model4@gamma)
 V1_P4<-mean(topicProbabilities4$V1)
@@ -434,6 +482,7 @@ V4_P4<-mean(topicProbabilities4$V4)
 V5_P4<-mean(topicProbabilities4$V5)
 V6_P4<-mean(topicProbabilities4$V6)
 
+# May 1st half
 topic_model5<-LDA(DTM5, k=6, control = list(seed = 321))
 topicProbabilities5 <- as.data.frame(topic_model5@gamma)
 V1_P5<-mean(topicProbabilities5$V1)
@@ -443,7 +492,7 @@ V4_P5<-mean(topicProbabilities5$V4)
 V5_P5<-mean(topicProbabilities5$V5)
 V6_P5<-mean(topicProbabilities5$V6)
 
-
+# Jan 2nd half
 topic_model6<-LDA(DTM6, k=6, control = list(seed = 321))
 topicProbabilities6 <- as.data.frame(topic_model6@gamma)
 V1_P6<-mean(topicProbabilities6$V1)
@@ -453,6 +502,7 @@ V4_P6<-mean(topicProbabilities6$V4)
 V5_P6<-mean(topicProbabilities6$V5)
 V6_P6<-mean(topicProbabilities6$V6)
 
+# Feb 2nd half
 topic_model7<-LDA(DTM7, k=6, control = list(seed = 321))
 topicProbabilities7 <- as.data.frame(topic_model7@gamma)
 V1_P7<-mean(topicProbabilities7$V1)
@@ -462,7 +512,7 @@ V4_P7<-mean(topicProbabilities7$V4)
 V5_P7<-mean(topicProbabilities7$V5)
 V6_P7<-mean(topicProbabilities7$V6)
 
-
+# March 2nd half
 topic_model8<-LDA(DTM8, k=6, control = list(seed = 321))
 topicProbabilities8 <- as.data.frame(topic_model8@gamma)
 V1_P8<-mean(topicProbabilities8$V1)
@@ -472,6 +522,7 @@ V4_P8<-mean(topicProbabilities8$V4)
 V5_P8<-mean(topicProbabilities8$V5)
 V6_P8<-mean(topicProbabilities8$V6)
 
+# April 2nd half
 topic_model9<-LDA(DTM9, k=6, control = list(seed = 321))
 topicProbabilities9 <- as.data.frame(topic_model9@gamma)
 V1_P9<-mean(topicProbabilities9$V1)

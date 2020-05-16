@@ -1,0 +1,10 @@
+## BigQuery query for NY data
+SELECT DATE(DateTime) as Date, Title, Lat, Lon, Location, GeoCoord, Adm1Code ,GeoType, DocTone, ContextualText  FROM `gdelt-bq.covid19.onlinenewsgeo` WHERE DATE(DateTime) >= "2020-01-01" 
+AND CountryCode = "US"
+AND Adm1Code = "USNY"
+AND Location LIKE '%York%'
+
+## SF data
+SELECT DATE(DateTime) as Date, Title, Lat, Lon, Location, GeoCoord, Adm1Code ,GeoType, DocTone, ContextualText  FROM `gdelt-bq.covid19.onlinenewsgeo` WHERE DATE(DateTime) >= "2020-01-01" 
+AND CountryCode = "US"
+AND Location LIKE '%Francisco%'
