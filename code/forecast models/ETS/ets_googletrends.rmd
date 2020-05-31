@@ -1,0 +1,92 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+## Import all necessary packages
+
+```{r}
+library(tidyverse)
+library(dplyr)
+library(forecast)
+library(ggplot2)
+library(tseries)
+library(summarytools)   
+```
+
+## Data Prep
+
+```{r}
+trends_data<- read.csv("economy_topics.csv",stringsAsFactors = FALSE, sep = ",")
+trends_data$Day <- as.Date(trends_data$Day, "%d/%m/%Y")
+```
+
+Then we select the necessary columns.
+
+```{r}
+trends_data_ts<- trends_data %>% select(Day,Economy...New.York.NY.)
+names(trends_data_ts)[2] <- "Economy_trend"
+```
+
+## Observe ts data
+
+```{r}
+ts_trends<-ts(trends_data_ts[,c("Economy_trend")],     
+           start = c(2020,1),
+   end= c(2020,132),
+           frequency = 365)
+
+as.data.frame(ts_trends)
+cycle(ts_trends)
+plot(ts_trends, ylab="Search trend", type="o")
+```
+
+
+
+## ACF plots
+
+```{r}
+#Autocorrelation test
+autoplot(acf(ts_trends,plot=FALSE))+ labs(title="Correlogram of Google trends data")
+
+
+
+```
+
+## Test Train Split
+
+```{r}
+ts_trends
+h2 <- 7L
+train2 <- head(ts_trends, round(length(ts_trends) - h2))
+test2 <- tail(ts_trends, h2)
+```
+
+
+## Model Building
+
+```{r}
+fit1 <- ets(train2, model = "AAN")  
+
+fit1_forecast <- forecast(fit1, h = 7) 
+fit1_forecast
+```
+
+
+
+
+```{r}
+plot(fit1_forecast)
+```
+
+```{r}
+fit_optimal <- ets(train2) 
+
+fit_optimal$method
+
+fitopt_forecast <- forecast(fit_optimal, h = 7) 
+fitopt_forecast
+plot(fitopt_forecast)
+```
+
+

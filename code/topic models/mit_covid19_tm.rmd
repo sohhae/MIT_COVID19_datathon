@@ -1,0 +1,538 @@
+---
+title: "MIT COVID 19 Datathon"
+author: "Srishti Saha"
+output: html_notebook
+---
+
+
+```{r global_options, include=FALSE}
+knitr::opts_chunk$set(fig.width=15, fig.height=8, warning=FALSE, echo=FALSE ,message=FALSE, fig.align = "center", out.width = '60%')
+```
+
+```{r echo=FALSE}
+library(tidytext)
+library(dplyr)
+library(kableExtra)
+library(tm)
+library(topicmodels)
+library(stringr)
+library(ggplot2)
+library(reshape)
+library(lubridate)
+library(tidyverse)
+#library("ldatuning")
+library(ggthemes)
+```
+
+# Data Source
+
+The data has been pulled from BigQuery. Data Source: [here](https://blog.gdeltproject.org/now-live-updating-expanded-a-new-dataset-for-exploring-the-coronavirus-narrative-in-global-online-news/)
+
+The data used for this analysis is a randomized sample of size: 300000 articles for NYC and 197672 articles for SF.
+
+We will split the data into segments of 2-week long periods from January to May 2020.
+
+## Data Split as per time-period (rows)
+
+```{r}
+#news_data<- read.csv("sample_data_nyc.csv",stringsAsFactors = FALSE, sep = ",")
+news_data<- read.csv("sample_data_sf.csv",stringsAsFactors = FALSE, sep = ",")
+news_data$Date <- as.Date(news_data$Date, "%Y-%m-%d")
+
+
+news_data_11<- subset(news_data, month(Date)==1 & day(Date)<=15)
+news_data_12<- subset(news_data, month(Date)==1 & day(Date)>15)
+news_data_21<- subset(news_data, month(Date)==2 & day(Date)<=15)
+news_data_22<- subset(news_data, month(Date)==2 & day(Date)>15)
+news_data_31<- subset(news_data, month(Date)==3 & day(Date)<=15)
+news_data_32<- subset(news_data, month(Date)==3 & day(Date)>15)
+news_data_41<- subset(news_data, month(Date)==4 & day(Date)<=15)
+news_data_42<- subset(news_data, month(Date)==4 & day(Date)>15)
+news_data_51<- subset(news_data, month(Date)==5 & day(Date)<=15)
+```
+
+
+## Data subsets for necessary columns
+
+```{r}
+
+data_1st_month_1st_half<-news_data_11%>% dplyr::select(Title,ContextualText)
+data_2nd_month_1st_half<-news_data_21%>% dplyr::select(Title,ContextualText)
+data_3rd_month_1st_half<-news_data_31%>% dplyr::select(Title,ContextualText)
+data_4th_month_1st_half<-news_data_41%>% dplyr::select(Title,ContextualText)
+data_5th_month_1st_half<-news_data_51%>% dplyr::select(Title,ContextualText)
+
+data_1st_month_2nd_half<-news_data_12%>% dplyr::select(Title,ContextualText)
+data_2nd_month_2nd_half<-news_data_22%>% dplyr::select(Title,ContextualText)
+data_3rd_month_2nd_half<-news_data_32%>% dplyr::select(Title,ContextualText)
+data_4th_month_2nd_half<-news_data_42%>% dplyr::select(Title,ContextualText)
+```
+
+# Preprocessing
+
+The sections below will clean the text and prepare that for topic modelling.
+
+## Create tidytext objects
+
+```{r}
+
+# creating tidytext format objects from each of the subsets above
+tidy_reviews1<-data_1st_month_1st_half %>%
+    unnest_tokens("word", ContextualText)
+tidy_reviews2<-data_2nd_month_1st_half %>%
+    unnest_tokens("word", ContextualText)
+tidy_reviews3<-data_3rd_month_1st_half %>%
+    unnest_tokens("word", ContextualText)
+tidy_reviews4<-data_4th_month_1st_half %>%
+    unnest_tokens("word", ContextualText)
+tidy_reviews5<-data_5th_month_1st_half %>%
+    unnest_tokens("word", ContextualText)
+
+
+tidy_reviews6<-data_1st_month_2nd_half %>%
+    unnest_tokens("word", ContextualText)
+tidy_reviews7<-data_2nd_month_2nd_half %>%
+    unnest_tokens("word", ContextualText)
+tidy_reviews8<-data_3rd_month_2nd_half %>%
+    unnest_tokens("word", ContextualText)
+tidy_reviews9<-data_4th_month_2nd_half %>%
+    unnest_tokens("word", ContextualText)
+
+
+```
+
+## Remove white spaces
+
+```{r}
+#remove extra white spaces
+tidy_reviews1$word <- gsub("\\s+","",tidy_reviews1$word)
+tidy_reviews2$word <- gsub("\\s+","",tidy_reviews2$word)
+tidy_reviews3$word <- gsub("\\s+","",tidy_reviews3$word)
+tidy_reviews4$word <- gsub("\\s+","",tidy_reviews4$word)
+tidy_reviews5$word <- gsub("\\s+","",tidy_reviews5$word)
+
+
+tidy_reviews6$word <- gsub("\\s+","",tidy_reviews6$word)
+tidy_reviews7$word <- gsub("\\s+","",tidy_reviews7$word)
+tidy_reviews8$word <- gsub("\\s+","",tidy_reviews8$word)
+tidy_reviews9$word <- gsub("\\s+","",tidy_reviews9$word)
+```
+
+
+## Removing numbers
+
+```{r}
+# removing numbers from the words list
+
+## all stand alone digits will be removed
+
+tidy_reviews1<-tidy_reviews1[-grep("\\b\\d+\\b", tidy_reviews1$word),]
+tidy_reviews2<-tidy_reviews2[-grep("\\b\\d+\\b", tidy_reviews2$word),]
+tidy_reviews3<-tidy_reviews3[-grep("\\b\\d+\\b", tidy_reviews3$word),]
+tidy_reviews4<-tidy_reviews4[-grep("\\b\\d+\\b", tidy_reviews4$word),]
+tidy_reviews5<-tidy_reviews5[-grep("\\b\\d+\\b", tidy_reviews5$word),]
+
+
+tidy_reviews6<-tidy_reviews2[-grep("\\b\\d+\\b", tidy_reviews6$word),]
+tidy_reviews7<-tidy_reviews3[-grep("\\b\\d+\\b", tidy_reviews7$word),]
+tidy_reviews8<-tidy_reviews4[-grep("\\b\\d+\\b", tidy_reviews8$word),]
+tidy_reviews9<-tidy_reviews5[-grep("\\b\\d+\\b", tidy_reviews9$word),]
+```
+
+## Removing Punctuations
+
+```{r echo=TRUE}
+# removing punctuation (intraword)
+tidy_reviews1$word<-removePunctuation(tidy_reviews1$word,preserve_intra_word_contractions = FALSE,
+                  preserve_intra_word_dashes = FALSE)
+
+tidy_reviews2$word<-removePunctuation(tidy_reviews2$word,preserve_intra_word_contractions = FALSE,
+                  preserve_intra_word_dashes = FALSE)
+
+tidy_reviews3$word<-removePunctuation(tidy_reviews3$word,preserve_intra_word_contractions = FALSE,
+                  preserve_intra_word_dashes = FALSE)
+
+tidy_reviews4$word<-removePunctuation(tidy_reviews4$word,preserve_intra_word_contractions = FALSE,
+                  preserve_intra_word_dashes = FALSE)
+
+tidy_reviews5$word<-removePunctuation(tidy_reviews5$word,preserve_intra_word_contractions = FALSE,
+                  preserve_intra_word_dashes = FALSE)
+
+
+tidy_reviews6$word<-removePunctuation(tidy_reviews6$word,preserve_intra_word_contractions = FALSE,
+                  preserve_intra_word_dashes = FALSE)
+
+tidy_reviews7$word<-removePunctuation(tidy_reviews7$word,preserve_intra_word_contractions = FALSE,
+                  preserve_intra_word_dashes = FALSE)
+
+tidy_reviews8$word<-removePunctuation(tidy_reviews8$word,preserve_intra_word_contractions = FALSE,
+                  preserve_intra_word_dashes = FALSE)
+
+tidy_reviews9$word<-removePunctuation(tidy_reviews9$word,preserve_intra_word_contractions = FALSE,
+                  preserve_intra_word_dashes = FALSE)
+```
+
+
+## Lemmatization
+
+```{r echo=TRUE}
+#Lemmatization
+tidy_reviews1<-tidy_reviews1  %>%
+  mutate(word = textstem::lemmatize_words(word))
+
+tidy_reviews2<-tidy_reviews2  %>%
+  mutate(word = textstem::lemmatize_words(word))
+
+tidy_reviews3<-tidy_reviews3  %>%
+  mutate(word = textstem::lemmatize_words(word))
+
+tidy_reviews4<-tidy_reviews4  %>%
+  mutate(word = textstem::lemmatize_words(word))
+
+tidy_reviews5<-tidy_reviews5  %>%
+  mutate(word = textstem::lemmatize_words(word))
+
+
+
+### for second half of each month
+tidy_reviews6<-tidy_reviews6  %>%
+  mutate(word = textstem::lemmatize_words(word))
+
+tidy_reviews7<-tidy_reviews7  %>%
+  mutate(word = textstem::lemmatize_words(word))
+
+tidy_reviews8<-tidy_reviews8  %>%
+  mutate(word = textstem::lemmatize_words(word))
+
+tidy_reviews9<-tidy_reviews9  %>%
+  mutate(word = textstem::lemmatize_words(word))
+```
+
+
+## Removal of short words
+
+```{r}
+# removing words of length 1 and 2
+tidy_reviews1$word<-gsub('\\b\\w{1,2}\\b',"",tidy_reviews1$word)
+tidy_reviews2$word<-gsub('\\b\\w{1,2}\\b',"",tidy_reviews2$word)
+tidy_reviews3$word<-gsub('\\b\\w{1,2}\\b',"",tidy_reviews3$word)
+tidy_reviews4$word<-gsub('\\b\\w{1,2}\\b',"",tidy_reviews4$word)
+tidy_reviews5$word<-gsub('\\b\\w{1,2}\\b',"",tidy_reviews5$word)
+
+
+tidy_reviews6$word<-gsub('\\b\\w{1,2}\\b',"",tidy_reviews6$word)
+tidy_reviews7$word<-gsub('\\b\\w{1,2}\\b',"",tidy_reviews7$word)
+tidy_reviews8$word<-gsub('\\b\\w{1,2}\\b',"",tidy_reviews8$word)
+tidy_reviews9$word<-gsub('\\b\\w{1,2}\\b',"",tidy_reviews9$word)
+```
+
+
+## Removal of Stop Words
+
+We will not only use the default stop word list, but also a custom list with place names etc.
+
+```{r echo=TRUE}
+data("stop_words")
+
+stop_words2= as.data.frame(c("every","also","","city","china","york","wuhan","coronavirus","virus","covid","people","person","san","bay","county","california","francisco"))
+names(stop_words2)[1]<- "word"
+
+##### for first month_ 1st half
+# remove the stop words in the list above
+tidy_reviews1<-tidy_reviews1 %>%
+      anti_join(stop_words)
+
+# from custom list 1st half
+tidy_reviews1<-tidy_reviews1 %>%
+      anti_join(stop_words2)
+
+
+##### for second month_ 1st half
+tidy_reviews2<-tidy_reviews2 %>%
+      anti_join(stop_words)
+
+tidy_reviews2<-tidy_reviews2 %>%
+      anti_join(stop_words2)
+
+
+##### for third month_ 1st half
+tidy_reviews3<-tidy_reviews3 %>%
+      anti_join(stop_words)
+
+tidy_reviews3<-tidy_reviews3 %>%
+      anti_join(stop_words2)
+
+##### for fourth month_1st half
+tidy_reviews4<-tidy_reviews4 %>%
+      anti_join(stop_words)
+
+tidy_reviews4<-tidy_reviews4 %>%
+      anti_join(stop_words2)
+
+##### for fifth month_ 1st half
+tidy_reviews5<-tidy_reviews5 %>%
+      anti_join(stop_words)
+
+tidy_reviews5<-tidy_reviews5 %>%
+      anti_join(stop_words2)
+
+
+
+
+###### second half of the months
+
+##### for second month_ 2nd half
+tidy_reviews6<-tidy_reviews6 %>%
+      anti_join(stop_words)
+
+tidy_reviews6<-tidy_reviews6 %>%
+      anti_join(stop_words2)
+
+
+##### for third month_ 2nd half
+tidy_reviews7<-tidy_reviews7 %>%
+      anti_join(stop_words)
+
+tidy_reviews7<-tidy_reviews7 %>%
+      anti_join(stop_words2)
+
+##### for fourth month_2nd half
+tidy_reviews8<-tidy_reviews8 %>%
+      anti_join(stop_words)
+
+tidy_reviews8<-tidy_reviews8 %>%
+      anti_join(stop_words2)
+
+##### for fifth month_ 2nd half
+tidy_reviews9<-tidy_reviews9 %>%
+      anti_join(stop_words)
+
+tidy_reviews9<-tidy_reviews9 %>%
+      anti_join(stop_words2)
+
+
+```
+
+# Document-Term Matrix
+
+We will use the cleaned tidy-text objects to form individual document-term matrices for all months (periods).
+
+```{r}
+# create a document-term matrix
+## DTM from tidytext
+DTM1<-  tidy_reviews1 %>%
+  dplyr::count(Title, word) %>%
+  cast_dtm(Title, word, n)
+
+DTM2<-  tidy_reviews2 %>%
+  dplyr::count(Title, word) %>%
+  cast_dtm(Title, word, n)
+
+DTM3<-  tidy_reviews3 %>%
+  dplyr::count(Title, word) %>%
+  cast_dtm(Title, word, n)
+
+DTM4<-  tidy_reviews4 %>%
+  dplyr::count(Title, word) %>%
+  cast_dtm(Title, word, n)
+
+DTM5<-  tidy_reviews5 %>%
+  dplyr::count(Title, word) %>%
+  cast_dtm(Title, word, n)
+
+
+## second half month DTMs
+DTM6<-  tidy_reviews6 %>%
+  dplyr::count(Title, word) %>%
+  cast_dtm(Title, word, n)
+
+DTM7<-  tidy_reviews7 %>%
+  dplyr::count(Title, word) %>%
+  cast_dtm(Title, word, n)
+
+DTM8<-  tidy_reviews8 %>%
+  dplyr::count(Title, word) %>%
+  cast_dtm(Title, word, n)
+
+DTM9<-  tidy_reviews9 %>%
+  dplyr::count(Title, word) %>%
+  cast_dtm(Title, word, n)
+
+
+```
+
+
+# Topic Modelling
+
+```{r}
+# writing a function that takes as input:
+## the array of k-values, 
+## the Document-term matrix and 
+##the number of top terms you want to see for each topics
+
+topic_model_k=function(DTM,k_array,n_top_terms,DTM_n,title_label){
+
+  
+for (i in 1:length(k_array)){
+  ki=k_array[i]
+  #create topic model
+topic_model1<-LDA(DTM, k=ki, control = list(seed = 321))
+
+topics1 <- tidy(topic_model1, matrix = "beta")
+
+top_terms1 <- 
+  topics1 %>%
+  group_by(topic) %>%
+  top_n(n_top_terms, beta) %>%
+  ungroup() %>%
+  arrange(topic, -beta)
+
+
+top_terms1<-top_terms1 %>%
+  mutate(term = reorder(term, beta)) 
+
+  print(ggplot(top_terms1,aes(term, beta, fill = factor(topic), width=.4)) +
+  geom_col(show.legend = FALSE) +
+  ylab("Word Significance (topic-word density)") + xlab("Keywords")+
+  ggtitle(paste0("Top ", n_top_terms," terms across ",ki, " top topics for month: ",title_label)) +
+  theme_economist() +
+  theme(axis.text.x = element_text(angle = 90, size = 8),
+        axis.text.y = element_text(size = 8),
+        plot.title = element_text(size = 10, face = "bold")) +
+  facet_wrap(~ topic, scales = "free") +
+  coord_flip())
+}
+}
+```
+
+
+
+
+```{r}
+# extracting 6 topics from each month_
+
+print("For month (1_1) ")
+topic_model_k(DTM1,c(6),10,1,'January 1st half')
+print("For month (2_1) ")
+topic_model_k(DTM2,c(6),10,2,'February 1st half')
+print("For month (3_1) ")
+topic_model_k(DTM3,c(6),10,3,'March 1st half')
+print("For month (4_1) ")
+topic_model_k(DTM4,c(6),10,4,'April 1st half')
+print("For month (5_1) ")
+topic_model_k(DTM5,c(6),10,5,'May 1st half')
+
+
+
+print("For month (1_2) ")
+topic_model_k(DTM6,c(6),10,3,'January 2nd half')
+print("For month (2_2) ")
+topic_model_k(DTM7,c(6),10,4,'February 2nd half')
+print("For month (3_2) ")
+topic_model_k(DTM8,c(6),10,5,'March 2nd half')
+print("For month (4_2) ")
+topic_model_k(DTM9,c(6),10,5,'April 2nd half')
+```
+
+```{r}
+
+
+## The gamma scores of the lDA outputs gives us topic probabilities givenn the documents
+# using gamma score for topic weightages
+
+# Jan 1st half
+topic_model1<-LDA(DTM1, k=6, control = list(seed = 321))
+topicProbabilities1 <- as.data.frame(topic_model1@gamma)
+V1_P1<-mean(topicProbabilities1$V1)
+V2_P1<-mean(topicProbabilities1$V2)
+V3_P1<-mean(topicProbabilities1$V3)
+V4_P1<-mean(topicProbabilities1$V4)
+V5_P1<-mean(topicProbabilities1$V5)
+V6_P1<-mean(topicProbabilities1$V6)
+
+
+# Feb 1st half
+topic_model2<-LDA(DTM2, k=6, control = list(seed = 321))
+topicProbabilities2 <- as.data.frame(topic_model2@gamma)
+V1_P2<-mean(topicProbabilities2$V1)
+V2_P2<-mean(topicProbabilities2$V2)
+V3_P2<-mean(topicProbabilities2$V3)
+V4_P2<-mean(topicProbabilities2$V4)
+V5_P2<-mean(topicProbabilities2$V5)
+V6_P2<-mean(topicProbabilities2$V6)
+
+
+# Narch 1st half
+topic_model3<-LDA(DTM3, k=6, control = list(seed = 321))
+topicProbabilities3 <- as.data.frame(topic_model3@gamma)
+V1_P3<-mean(topicProbabilities3$V1)
+V2_P3<-mean(topicProbabilities3$V2)
+V3_P3<-mean(topicProbabilities3$V3)
+V4_P3<-mean(topicProbabilities3$V4)
+V5_P3<-mean(topicProbabilities3$V5)
+V6_P3<-mean(topicProbabilities3$V6)
+
+# April 1st half
+topic_model4<-LDA(DTM4, k=6, control = list(seed = 321))
+topicProbabilities4 <- as.data.frame(topic_model4@gamma)
+V1_P4<-mean(topicProbabilities4$V1)
+V2_P4<-mean(topicProbabilities4$V2)
+V3_P4<-mean(topicProbabilities4$V3)
+V4_P4<-mean(topicProbabilities4$V4)
+V5_P4<-mean(topicProbabilities4$V5)
+V6_P4<-mean(topicProbabilities4$V6)
+
+# May 1st half
+topic_model5<-LDA(DTM5, k=6, control = list(seed = 321))
+topicProbabilities5 <- as.data.frame(topic_model5@gamma)
+V1_P5<-mean(topicProbabilities5$V1)
+V2_P5<-mean(topicProbabilities5$V2)
+V3_P5<-mean(topicProbabilities5$V3)
+V4_P5<-mean(topicProbabilities5$V4)
+V5_P5<-mean(topicProbabilities5$V5)
+V6_P5<-mean(topicProbabilities5$V6)
+
+# Jan 2nd half
+topic_model6<-LDA(DTM6, k=6, control = list(seed = 321))
+topicProbabilities6 <- as.data.frame(topic_model6@gamma)
+V1_P6<-mean(topicProbabilities6$V1)
+V2_P6<-mean(topicProbabilities6$V2)
+V3_P6<-mean(topicProbabilities6$V3)
+V4_P6<-mean(topicProbabilities6$V4)
+V5_P6<-mean(topicProbabilities6$V5)
+V6_P6<-mean(topicProbabilities6$V6)
+
+# Feb 2nd half
+topic_model7<-LDA(DTM7, k=6, control = list(seed = 321))
+topicProbabilities7 <- as.data.frame(topic_model7@gamma)
+V1_P7<-mean(topicProbabilities7$V1)
+V2_P7<-mean(topicProbabilities7$V2)
+V3_P7<-mean(topicProbabilities7$V3)
+V4_P7<-mean(topicProbabilities7$V4)
+V5_P7<-mean(topicProbabilities7$V5)
+V6_P7<-mean(topicProbabilities7$V6)
+
+# March 2nd half
+topic_model8<-LDA(DTM8, k=6, control = list(seed = 321))
+topicProbabilities8 <- as.data.frame(topic_model8@gamma)
+V1_P8<-mean(topicProbabilities8$V1)
+V2_P8<-mean(topicProbabilities8$V2)
+V3_P8<-mean(topicProbabilities8$V3)
+V4_P8<-mean(topicProbabilities8$V4)
+V5_P8<-mean(topicProbabilities8$V5)
+V6_P8<-mean(topicProbabilities8$V6)
+
+# April 2nd half
+topic_model9<-LDA(DTM9, k=6, control = list(seed = 321))
+topicProbabilities9 <- as.data.frame(topic_model9@gamma)
+V1_P9<-mean(topicProbabilities9$V1)
+V2_P9<-mean(topicProbabilities9$V2)
+V3_P9<-mean(topicProbabilities9$V3)
+V4_P9<-mean(topicProbabilities9$V4)
+V5_P9<-mean(topicProbabilities9$V5)
+V6_P9<-mean(topicProbabilities9$V6)
+```
+
+
+
+
