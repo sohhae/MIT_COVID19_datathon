@@ -1,4 +1,4 @@
 # MIT_COVID19_datathon
 
 MIT Datathon on Megacity Pandemic Response in NYC
-The problem statement we are trying to solve is: ROle of Media in Ganining Insight into the Public Mind
+This project aims to answer how the public priorities and concerns evolve through the course of a pandemic, thus helping the public prepare in advance for an such event in the future and even the policy makers to address several concerns among thepublic at the different stages of the pandemic.
